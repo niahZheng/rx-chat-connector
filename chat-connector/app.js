@@ -8,8 +8,9 @@ client.setEnvironment('cac1.pure.cloud'); // Genesys Cloud region
 
 const clientId = '47046fb7-aaad-45e3-8b38-f4f6f2e49080';
 const clientSecret = 'BHgIgBRTbjaaOvDxtWGj-1YcVw4mqxoFSTUWqBWrKBs';
-const conversationId = "645dbba6-2baf-4712-bb4c-5e07e1fbc82c";
-
+//const conversationId = "645dbba6-2baf-4712-bb4c-5e07e1fbc82c";
+//const conversationId = "827627ba-a2df-4bd2-b7bf-73bf4949c8e5";
+const conversationId = "186c6c3b-8d11-46dd-b244-e90bc99a7920"
 
 //"userId":0a904021-a9af-4c7a-b8ee-9feeb968e9d0
 //queueId: 8683de87-8d6a-44de-a86b-0f723a5eedad
@@ -62,11 +63,13 @@ function fetchMessages(data) {
     apiInstance.postConversationsMessageMessagesBulk(conversationId, opts)
         .then((data) => {
             data.entities.forEach(msg => {
+                console.log(msg)
                 console.log((msg.direction == "inbound" ? "Guest" : "Agent") + "- " + convertTimestampToTimeText(msg.timestamp) + ":" + msg.normalizedMessage.text)
             });
             //console.log(`postConversationsMessageMessagesBulk success! data: ${JSON.stringify(data, null, 2)}`);
         })
         .catch((err) => {
+            
             console.log("There was a failure calling postConversationsMessageMessagesBulk");
             console.error(err);
         });
