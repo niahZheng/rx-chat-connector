@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const { MongoClient } = require("mongodb");
 
 const app = express();
-const port = 3000;
+//const port = 3000;
 const fs = require("fs")
 
 const platformClient = require('purecloud-platform-client-v2');
@@ -250,7 +250,7 @@ async function messageCheck(req, res, ws, message) {
 
 
 // 启动服务器
-port=process.env.PORT || 3000;
+const port=process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server Port ${port}`);
 });  
