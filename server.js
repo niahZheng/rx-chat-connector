@@ -250,7 +250,7 @@ async function messageCheck(req, res, ws, message) {
 
 
 // 启动服务器
+port=process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server Port ${port}`);
-  console.log('Testing Address://localhost:3000/test');
 });  
