@@ -49,7 +49,7 @@ app.post('/test', (req, res) => {
 async function notification(req, res, conversationId) {
   try {
     // 登录
-    await client.loginClientCredentialsGrant(clientId, clientSecret);
+    let clientInfo = await client.loginClientCredentialsGrant(clientId, clientSecret);
 
     // 获取 conversation 详情
     const conversation = await conversationsApi.getConversation(conversationId);
@@ -116,7 +116,6 @@ function loginClient(req, res, ws, conversationId){
               console.log("There was a failure calling login");
               console.error(err);
           })
-
   } catch (error) {
       console.error(err);
   }
