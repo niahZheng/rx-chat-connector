@@ -16,7 +16,7 @@ class CeleryEventPublisher extends EventPublisher {
 
     // TODO: take proper env vars
     const rabbitUrl = process.env.AAN_AMQP_URI || 'amqp://rxadmin:rxadmin321@20.39.130.141:5672';
-    const redisUrl = process.env.AAN_REDIS_URI || `rediss://default:${process.env.REDIS_PASSWORD}@rx-redis.redis.cache.windows.net:6380/1?ssl=true`
+    const redisUrl = `rediss://default:${process.env.REDIS_PASSWORD}@rx-redis.redis.cache.windows.net:6380/1?ssl=true`
 
 
     this.client = celery.createClient(

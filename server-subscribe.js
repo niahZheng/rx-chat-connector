@@ -175,19 +175,16 @@ async function handleNewMessage(message) {
         console.log('Sender:', msg.sender?.id || 'N/A');
         console.log('Timestamp:', new Date().toISOString());
 
-        // Publish message to Celery using the same format as GenesysAudioHookAdapter
+        // Publish message to Celery using the exact same format as GenesysAudioHookAdapter
         const event = {
           'type': 'transcription',
           'parameters': {
             'source': 'genesys_conversation',
             'text': msg.text || msg.content || '',
             'seq': msg.id,
-            'timestamp': new Date().toISOString(),
-            'conversation_id': msg.conversation?.id,
-            'message_type': msg.type,
-            'sender_id': msg.sender?.id
+            'timestamp': new Date().toISOString()
           },
-          'conversationid': msg.conversation?.id // for routing backend messages
+          'conversationid': msg.conversation?.id
         };
 
         // Use the same topic structure as GenesysAudioHookAdapter
