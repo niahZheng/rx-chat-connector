@@ -2,10 +2,10 @@
   "name": "nodejs-api-example",
   "version": "1.0.0",
   "description": "简单的Node.js API后台示例",
-  "main": "server.js",
+  "main": "server-subscribe.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node server-subscribe.js",
+    "dev": "nodemon server-subscribe.js"
   },
   "keywords": [
     "nodejs",

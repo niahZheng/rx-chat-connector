@@ -3,6 +3,8 @@ const bodyParser = require('body-parser');
 const { MongoClient } = require("mongodb");
 const platformClient = require('purecloud-platform-client-v2');
 const WebSocket = require('ws');
+const EventPublisher = require('./EventPublisher');
+const CeleryEventPublisher = require('./CeleryEventPublisher');
 require('dotenv').config();
 
 // Configuration from environment variables
@@ -12,6 +14,9 @@ const config = {
   region: process.env.GENESYS_REGION,
   mongoUri: process.env.MONGODB_URI
 };
+
+// Initialize event publisher
+const eventPublisher = new CeleryEventPublisher();
 
 // Initialize Express app
 const app = express();
@@ -143,6 +148,22 @@ async function handleNewMessage(message) {
         console.log('Content:', msg.text || msg.content || 'N/A');
         console.log('Sender:', msg.sender?.id || 'N/A');
         console.log('Timestamp:', new Date().toISOString());
+
+        // Publish message to Celery
+        const topic = `genesys/conversation/${msg.conversation?.id || 'unknown'}`;
+        const messageData = {
+          type: 'conversation_message',
+          parameters: {
+            message_id: msg.id,
+            conversation_id: msg.conversation?.id,
+            message_type: msg.type,
+            content: msg.text || msg.content,
+            sender_id: msg.sender?.id,
+            timestamp: new Date().toISOString()
+          }
+        };
+
+        eventPublisher.publish(topic, JSON.stringify(messageData));
       }
       console.log('===========================\n');
       return;
@@ -199,6 +220,25 @@ async function saveMessageToDatabase(message, conversationId) {
 
 // Start server
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Server running on port ${port}`);
+});
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+    eventPublisher.destroy();
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+    eventPublisher.destroy();
+    process.exit(0);
+  });
 });  
