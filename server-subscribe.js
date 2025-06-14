@@ -95,7 +95,14 @@ async function subscribeToConversation(conversationId) {
       },
       'conversationid': conversationId
     };
-    eventPublisher.publish(rootSessionTopic, JSON.stringify(sessionStartEvent));
+
+    // Print session start event details
+    console.log('\n=== Session Start Event to be published ===');
+    console.log('Topic:', rootSessionTopic);
+    console.log('Event:', JSON.stringify(sessionStartEvent, null, 2));
+    console.log('===========================\n');
+
+    // eventPublisher.publish(rootSessionTopic, JSON.stringify(sessionStartEvent));
 
     // Create notification channel
     const channel = await notificationsApi.postNotificationsChannels();
@@ -129,7 +136,14 @@ async function subscribeToConversation(conversationId) {
       const sessionEndEvent = {
         'type': 'session_ended'
       };
-      eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
+
+      // Print session end event details
+      console.log('\n=== Session End Event to be published ===');
+      console.log('Topic:', rootTopic + conversationId);
+      console.log('Event:', JSON.stringify(sessionEndEvent, null, 2));
+      console.log('===========================\n');
+
+      // eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
     });
 
     ws.on('close', () => {
@@ -138,7 +152,14 @@ async function subscribeToConversation(conversationId) {
       const sessionEndEvent = {
         'type': 'session_ended'
       };
-      eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
+
+      // Print session end event details
+      console.log('\n=== Session End Event to be published ===');
+      console.log('Topic:', rootTopic + conversationId);
+      console.log('Event:', JSON.stringify(sessionEndEvent, null, 2));
+      console.log('===========================\n');
+
+      // eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
     });
 
   } catch (error) {
@@ -189,7 +210,14 @@ async function handleNewMessage(message) {
 
         // Use the same topic structure as GenesysAudioHookAdapter
         const topic = rootTopic + msg.conversation?.id + "/transcription";
-        eventPublisher.publish(topic, JSON.stringify(event));
+
+        // Print detailed message content before publishing
+        console.log('\n=== Message to be published ===');
+        console.log('Topic:', topic);
+        console.log('Event:', JSON.stringify(event, null, 2));
+        console.log('===========================\n');
+
+        // eventPublisher.publish(topic, JSON.stringify(event));
       }
       console.log('===========================\n');
       return;

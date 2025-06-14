@@ -1,6 +1,6 @@
 const celery = require('celery-node');
 
-const LOG_LEVEL = process.env.LOG_LEVEL;
+const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
 const logger = require('pino')({ level: LOG_LEVEL, name: 'CeleryEventPublisher' });
 
 const { trace, SpanKind, context } = require('@opentelemetry/api');
