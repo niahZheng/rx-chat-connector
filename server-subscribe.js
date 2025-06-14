@@ -18,6 +18,10 @@ const config = {
 // Initialize event publisher
 const eventPublisher = new CeleryEventPublisher();
 
+// Define root topic
+const rootTopic = "agent-assist/";
+const rootSessionTopic = rootTopic + "session";
+
 // Initialize Express app
 const app = express();
 app.use(bodyParser.json());
@@ -80,6 +84,19 @@ async function subscribeToConversation(conversationId) {
     const userId = agentParticipant.userId;
     console.log('Agent userId:', userId);
 
+    // Send session started event
+    const sessionStartEvent = {
+      'type': 'session_started',
+      'parameters': {
+        'session_id': conversationId,
+        'customer_ani': conversation.participants.find(p => p.purpose === 'customer')?.address || 'unknown',
+        'customer_name': conversation.participants.find(p => p.purpose === 'customer')?.name || 'unknown',
+        'dnis': conversation.participants.find(p => p.purpose === 'customer')?.address || 'unknown',
+      },
+      'conversationid': conversationId
+    };
+    eventPublisher.publish(rootSessionTopic, JSON.stringify(sessionStartEvent));
+
     // Create notification channel
     const channel = await notificationsApi.postNotificationsChannels();
     const channelId = channel.id;
@@ -100,7 +117,6 @@ async function subscribeToConversation(conversationId) {
         const message = JSON.parse(msg);
         if (message?.eventBody) {
           await handleNewMessage(message);
-          // await saveMessageToDatabase(message, conversationId);
         }
       } catch (error) {
         console.error('Error processing message:', error);
@@ -109,10 +125,20 @@ async function subscribeToConversation(conversationId) {
 
     ws.on('error', err => {
       console.error('WebSocket error:', err);
+      // Send session ended event on error
+      const sessionEndEvent = {
+        'type': 'session_ended'
+      };
+      eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
     });
 
     ws.on('close', () => {
       console.warn('WebSocket connection closed');
+      // Send session ended event on close
+      const sessionEndEvent = {
+        'type': 'session_ended'
+      };
+      eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
     });
 
   } catch (error) {
@@ -149,21 +175,24 @@ async function handleNewMessage(message) {
         console.log('Sender:', msg.sender?.id || 'N/A');
         console.log('Timestamp:', new Date().toISOString());
 
-        // Publish message to Celery
-        const topic = `genesys/conversation/${msg.conversation?.id || 'unknown'}`;
-        const messageData = {
-          type: 'conversation_message',
-          parameters: {
-            message_id: msg.id,
-            conversation_id: msg.conversation?.id,
-            message_type: msg.type,
-            content: msg.text || msg.content,
-            sender_id: msg.sender?.id,
-            timestamp: new Date().toISOString()
-          }
+        // Publish message to Celery using the same format as GenesysAudioHookAdapter
+        const event = {
+          'type': 'transcription',
+          'parameters': {
+            'source': 'genesys_conversation',
+            'text': msg.text || msg.content || '',
+            'seq': msg.id,
+            'timestamp': new Date().toISOString(),
+            'conversation_id': msg.conversation?.id,
+            'message_type': msg.type,
+            'sender_id': msg.sender?.id
+          },
+          'conversationid': msg.conversation?.id // for routing backend messages
         };
 
-        eventPublisher.publish(topic, JSON.stringify(messageData));
+        // Use the same topic structure as GenesysAudioHookAdapter
+        const topic = rootTopic + msg.conversation?.id + "/transcription";
+        eventPublisher.publish(topic, JSON.stringify(event));
       }
       console.log('===========================\n');
       return;
