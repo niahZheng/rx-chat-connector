@@ -111,17 +111,89 @@ async function subscribeToConversation(conversationId) {
 
     // Initialize WebSocket connection
     const ws = new WebSocket(websocketUri);
+    let heartbeatInterval;
+    let reconnectTimeout;
+
+    // Setup heartbeat
+    function startHeartbeat() {
+      // Clear any existing interval
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+      }
+
+      // Send heartbeat every 30 seconds
+      heartbeatInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          console.log('Sending heartbeat ping...');
+          ws.send(JSON.stringify({ message: 'ping' }));
+        }
+      }, 30000);
+    }
+
+    // Handle reconnection
+    async function reconnect() {
+      console.log('Attempting to reconnect...');
+      try {
+        // Clear any existing timeout
+        if (reconnectTimeout) {
+          clearTimeout(reconnectTimeout);
+        }
+
+        // Create new notification channel
+        const newChannel = await notificationsApi.postNotificationsChannels();
+        const newWebsocketUri = newChannel.connectUri;
+
+        // Close existing connection
+        ws.close();
+
+        // Create new WebSocket connection
+        const newWs = new WebSocket(newWebsocketUri);
+        
+        // Copy event handlers to new WebSocket
+        newWs.on('open', ws.onopen);
+        newWs.on('message', ws.onmessage);
+        newWs.on('error', ws.onerror);
+        newWs.on('close', ws.onclose);
+
+        // Start heartbeat for new connection
+        startHeartbeat();
+
+        console.log('Reconnected successfully');
+      } catch (error) {
+        console.error('Reconnection failed:', error);
+        // Try again in 5 seconds
+        reconnectTimeout = setTimeout(reconnect, 5000);
+      }
+    }
 
     ws.on('open', async () => {
       console.log('WebSocket connected. Subscribing...');
       const topic = `v2.users.${userId}.conversations.messages`;
       await notificationsApi.putNotificationsChannelSubscriptions(channelId, [{ id: topic }]);
       console.log(`Subscribed to topic: ${topic}`);
+      
+      // Start heartbeat after connection is established
+      startHeartbeat();
     });
 
     ws.on('message', async msg => {
       try {
         const message = JSON.parse(msg);
+        
+        // Handle heartbeat response
+        if (message.topicName === 'channel.metadata' && message.eventBody?.message === 'pong') {
+          console.log('Received heartbeat pong');
+          return;
+        }
+
+        // Handle WebSocket closing notification
+        if (message.topicName === 'v2.system.socket_closing') {
+          console.log('Received WebSocket closing notification:', message.eventBody?.message);
+          // Start reconnection process
+          reconnect();
+          return;
+        }
+
         if (message?.eventBody) {
           await handleNewMessage(message);
         }
@@ -144,10 +216,18 @@ async function subscribeToConversation(conversationId) {
       console.log('===========================\n');
 
       // eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
+      
+      // Attempt to reconnect on error
+      reconnect();
     });
 
     ws.on('close', () => {
       console.warn('WebSocket connection closed');
+      // Clear heartbeat interval
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+      }
+      
       // Send session ended event on close
       const sessionEndEvent = {
         'type': 'session_ended'
@@ -160,6 +240,9 @@ async function subscribeToConversation(conversationId) {
       console.log('===========================\n');
 
       // eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
+      
+      // Attempt to reconnect
+      reconnect();
     });
 
   } catch (error) {
