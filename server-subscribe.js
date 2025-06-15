@@ -72,7 +72,7 @@ async function subscribeToConversation(conversationId) {
   try {
     // Authenticate with Genesys
     await client.loginClientCredentialsGrant(config.clientId, config.clientSecret);
-
+          
     // Get conversation details
     const conversation = await conversationsApi.getConversation(conversationId);
     const agentParticipant = conversation.participants.find(p => p.purpose === 'agent');
@@ -83,26 +83,6 @@ async function subscribeToConversation(conversationId) {
 
     const userId = agentParticipant.userId;
     console.log('Agent userId:', userId);
-
-    // Send session started event
-    const sessionStartEvent = {
-      'type': 'session_started',
-      'parameters': {
-        'session_id': conversationId,
-        'customer_ani': conversation.participants.find(p => p.purpose === 'customer')?.address || 'unknown',
-        'customer_name': conversation.participants.find(p => p.purpose === 'customer')?.name || 'unknown',
-        'dnis': conversation.participants.find(p => p.purpose === 'customer')?.address || 'unknown',
-      },
-      'conversationid': conversationId
-    };
-
-    // Print session start event details
-    console.log('\n=== Session Start Event to be published ===');
-    console.log('Topic:', rootSessionTopic);
-    console.log('Event:', JSON.stringify(sessionStartEvent, null, 2));
-    console.log('===========================\n');
-
-    // eventPublisher.publish(rootSessionTopic, JSON.stringify(sessionStartEvent));
 
     // Create notification channel
     const channel = await notificationsApi.postNotificationsChannels();
@@ -168,6 +148,7 @@ async function subscribeToConversation(conversationId) {
 
     ws.on('open', async () => {
       console.log('WebSocket connected. Subscribing...');
+      // Subscribe to all messages first, we'll get the specific userId after subscription confirmation
       const topic = `v2.users.${userId}.conversations.messages`;
       await notificationsApi.putNotificationsChannelSubscriptions(channelId, [{ id: topic }]);
       console.log(`Subscribed to topic: ${topic}`);
@@ -180,9 +161,17 @@ async function subscribeToConversation(conversationId) {
       try {
         const message = JSON.parse(msg);
         
+        // Print non-heartbeat messages
+        if (message.topicName !== 'channel.metadata') {
+          console.log("========Received message=======");
+          console.log(JSON.stringify(message, null, 2));
+        }
+        
         // Handle heartbeat response
-        if (message.topicName === 'channel.metadata' && message.eventBody?.message === 'pong') {
-          console.log('Received heartbeat pong');
+        if (message.topicName === 'channel.metadata') {
+          if (message.eventBody?.message === 'pong') {
+            console.log('Received heartbeat pong');
+          }
           return;
         }
 
@@ -194,8 +183,35 @@ async function subscribeToConversation(conversationId) {
           return;
         }
 
-        if (message?.eventBody) {
-          await handleNewMessage(message);
+        // Handle subscription confirmation and initial setup
+        if (message.topicName?.startsWith('v2.users.') && message.eventBody?.type === 'webmessaging') {
+
+          // Send session started event
+          const sessionStartEvent = {
+            'type': 'session_started',
+            'parameters': {
+              'session_id': conversationId,
+              'customer_ani': conversation.participants.find(p => p.purpose === 'customer')?.address || 'unknown',
+              'customer_name': conversation.participants.find(p => p.purpose === 'customer')?.name || 'unknown',
+              'dnis': conversation.participants.find(p => p.purpose === 'customer')?.address || 'unknown',
+            },
+            'conversationid': conversationId
+          };
+
+          // Print session start event details
+          console.log('\n=== Session Start Event to be published ===');
+          console.log('Topic:', rootSessionTopic);
+          console.log('Event:', JSON.stringify(sessionStartEvent, null, 2));
+          console.log('===========================\n');
+
+          // eventPublisher.publish(rootSessionTopic, JSON.stringify(sessionStartEvent));
+
+          // Get message history
+          try {
+            await fetchMessageHistory(conversationId, conversation);
+          } catch (error) {
+            console.error('Error fetching message history:', error);
+          }
         }
       } catch (error) {
         console.error('Error processing message:', error);
@@ -215,7 +231,7 @@ async function subscribeToConversation(conversationId) {
       console.log('Event:', JSON.stringify(sessionEndEvent, null, 2));
       console.log('===========================\n');
 
-      // eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
+      eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
       
       // Attempt to reconnect on error
       reconnect();
@@ -239,7 +255,7 @@ async function subscribeToConversation(conversationId) {
       console.log('Event:', JSON.stringify(sessionEndEvent, null, 2));
       console.log('===========================\n');
 
-      // eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
+      eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
       
       // Attempt to reconnect
       reconnect();
@@ -252,106 +268,84 @@ async function subscribeToConversation(conversationId) {
 }
 
 /**
- * Handle new message from conversation and output to terminal
- * @param {Object} message - The message object
+ * Get message IDs from conversation participants
+ * @param {Object} conversation - The conversation object
+ * @returns {Array} Array of message IDs
  */
-async function handleNewMessage(message) {
-  try {
-    // Handle heartbeat messages
-    if (message.topicName === 'channel.metadata') {
-      console.log('\n=== WebSocket Heartbeat ===');
-      console.log('Timestamp:', new Date().toISOString());
-      console.log('===========================\n');
-      return;
+function getMessageIds(conversation) {
+  let messageIds = [];
+  conversation.participants.forEach(participant => {
+    if (participant.purpose === 'customer') {
+      participant.messages[0].messages.forEach(msg => {
+        if (msg.messageMetadata.type === 'Text') {
+          messageIds.push(msg.messageId);
+        }
+      });
     }
-
-    // Handle conversation messages
-    if (message.topicName?.startsWith('v2.users.')) {
-      console.log('\n=== New Conversation Message ===');
-      console.log('Topic:', message.topicName);
-
-      if (message.eventBody) {
-        const msg = message.eventBody;
-        console.log('Message ID:', msg.id || 'N/A');
-        console.log('Conversation ID:', msg.conversation?.id || 'N/A');
-        console.log('Type:', msg.type || 'N/A');
-        console.log('Content:', msg.text || msg.content || 'N/A');
-        console.log('Sender:', msg.sender?.id || 'N/A');
-        console.log('Timestamp:', new Date().toISOString());
-
-        // Publish message to Celery using the exact same format as GenesysAudioHookAdapter
-        const event = {
-          'type': 'transcription',
-          'parameters': {
-            'source': 'genesys_conversation',
-            'text': msg.text || msg.content || '',
-            'seq': msg.id,
-            'timestamp': new Date().toISOString()
-          },
-          'conversationid': msg.conversation?.id
-        };
-
-        // Use the same topic structure as GenesysAudioHookAdapter
-        const topic = rootTopic + msg.conversation?.id + "/transcription";
-
-        // Print detailed message content before publishing
-        console.log('\n=== Message to be published ===');
-        console.log('Topic:', topic);
-        console.log('Event:', JSON.stringify(event, null, 2));
-        console.log('===========================\n');
-
-        // eventPublisher.publish(topic, JSON.stringify(event));
-      }
-      console.log('===========================\n');
-      return;
+    if (participant.purpose === 'agent') {
+      participant.messages[0].messages.forEach(msg => {
+        messageIds.push(msg.messageId);
+      });
     }
-
-    // Handle other types of messages
-    console.log('\n=== Other Message Type ===');
-    console.log('Topic:', message.topicName || 'N/A');
-    console.log('Raw Message:', JSON.stringify(message, null, 2));
-    console.log('Timestamp:', new Date().toISOString());
-    console.log('===========================\n');
-
-  } catch (error) {
-    console.error('Error handling message:', error);
-    throw error;
-  }
+  });
+  return messageIds;
 }
 
 /**
- * Save message to database
- * @param {Object} message - The message object
+ * Fetch message history for a conversation
  * @param {string} conversationId - The conversation ID
+ * @param {Object} conversation - The conversation object
  */
-async function saveMessageToDatabase(message, conversationId) {
-  const mongoClient = new MongoClient(config.mongoUri);
-
+async function fetchMessageHistory(conversationId, conversation) {
   try {
-    await mongoClient.connect();
-    const db = mongoClient.db("testdb");
-    const collection = db.collection("MessageCollection");
+    const messageIds = getMessageIds(conversation);
+    console.log('Message IDs to fetch:', messageIds);
 
-    const msg = message.eventBody;
-    const existingDoc = await collection.findOne({
-      msgId: msg.id,
-      conversationId: msg.conversationId
-    });
+    const opts = {
+      "useNormalizedMessage": true,
+      "body": messageIds
+    };
 
-    if (!existingDoc) {
-      await collection.insertOne({
-        conversationId: msg.conversationId,
-        msgId: msg.id,
-        timestamp: new Date()
-      });
-      console.log('Message saved to database:', msg.id);
+    // Get messages in batch
+    const messages = await conversationsApi.postConversationsMessageMessagesBulk(conversationId, opts);
+    console.log('Fetched message history:', messages);
+
+    // Process each message
+    for (const msg of messages.entities) {
+      console.log('\n=== Historical Message ===');
+      console.log('Message ID:', msg.id);
+      console.log('Conversation ID:', msg.conversationId);
+      console.log('Type:', msg.normalizedMessage?.type || 'N/A');
+      console.log('Content:', msg.normalizedMessage?.text || 'N/A');
+      console.log('Sender:', msg.fromAddress || 'N/A');
+      console.log('Timestamp:', msg.timestamp || 'N/A');
+      console.log('===========================\n');
+
+      // Publish historical message to Celery
+      const event = {
+        'type': 'transcription',
+        'parameters': {
+          'source': 'genesys_conversation',
+          'text': msg.normalizedMessage?.text || '',
+          'seq': msg.id,
+          'timestamp': msg.timestamp
+        },
+        'conversationid': msg.conversationId
+      };
+
+      const topic = rootTopic + msg.conversationId + "/transcription";
+      
+      // Print message details
+      console.log('\n=== Historical Message to be published ===');
+      console.log('Topic:', topic);
+      console.log('Event:', JSON.stringify(event, null, 2));
+      console.log('===========================\n');
+
+      // eventPublisher.publish(topic, JSON.stringify(event));
     }
-
   } catch (error) {
-    console.error('Database operation failed:', error);
+    console.error('Error fetching message history:', error);
     throw error;
-  } finally {
-    await mongoClient.close();
   }
 }
 
