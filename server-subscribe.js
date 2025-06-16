@@ -5,6 +5,7 @@ const platformClient = require('purecloud-platform-client-v2');
 const WebSocket = require('ws');
 const EventPublisher = require('./EventPublisher');
 const CeleryEventPublisher = require('./CeleryEventPublisher');
+const cors = require('cors');
 require('dotenv').config();
 
 // Configuration from environment variables
@@ -24,6 +25,16 @@ const rootSessionTopic = rootTopic + "session";
 
 // Initialize Express app
 const app = express();
+
+// Configure CORS
+const corsOptions = {
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+};
+
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -32,6 +43,12 @@ const client = platformClient.ApiClient.instance;
 client.setEnvironment(config.region);
 const notificationsApi = new platformClient.NotificationsApi();
 const conversationsApi = new platformClient.ConversationsApi();
+
+// Add global variable for customer connected time
+let conversationsationStartTime = null;
+
+// Add global Set to track sent message IDs
+const sentMessageIds = new Set();
 
 /**
  * 订阅会话消息的端点
@@ -159,7 +176,7 @@ async function subscribeToConversation(conversationId) {
 
     ws.on('message', async msg => {
       try {
-        const message = JSON.parse(msg);
+        const message = JSON.parse(msg);      
         
         // Print non-heartbeat messages
         if (message.topicName !== 'channel.metadata') {
@@ -184,31 +201,32 @@ async function subscribeToConversation(conversationId) {
         }
 
         // Handle subscription confirmation and initial setup
-        if (message.topicName?.startsWith('v2.users.') && message.eventBody?.type === 'webmessaging') {
+        if (message.topicName?.startsWith('v2.users.')) {
+          // Get fresh conversation data
+          const freshConversation = await conversationsApi.getConversation(conversationId);
+          console.log('Fresh conversation data:', JSON.stringify(freshConversation, null, 2));
 
-          // Send session started event
-          const sessionStartEvent = {
-            'type': 'session_started',
-            'parameters': {
-              'session_id': conversationId,
-              'customer_ani': conversation.participants.find(p => p.purpose === 'customer')?.address || 'unknown',
-              'customer_name': conversation.participants.find(p => p.purpose === 'customer')?.name || 'unknown',
-              'dnis': conversation.participants.find(p => p.purpose === 'customer')?.address || 'unknown',
-            },
-            'conversationid': conversationId
-          };
+          // Find customer participant and save connected time
+          const customerParticipant = freshConversation.participants.find(p => p.purpose === 'customer');
+          if (customerParticipant && customerParticipant.connectedTime) {
+            conversationsationStartTime = customerParticipant.connectedTime;
+            console.log('Customer connected time saved:', conversationsationStartTime);
+          }
+          
+          // Check if this is the earliest moment of conversation
+          checkAndHandleConversationStart(customerParticipant, conversationId, rootSessionTopic);
 
-          // Print session start event details
-          console.log('\n=== Session Start Event to be published ===');
-          console.log('Topic:', rootSessionTopic);
-          console.log('Event:', JSON.stringify(sessionStartEvent, null, 2));
-          console.log('===========================\n');
+          // Check if conversation has ended
+          if (customerParticipant && 
+              (customerParticipant.state === 'disconnected' || 
+               customerParticipant.state === 'terminated')) {
+            sendSessionEndEvent(conversationId, rootTopic + conversationId);
+          }
 
-          // eventPublisher.publish(rootSessionTopic, JSON.stringify(sessionStartEvent));
-
-          // Get message history
+          // Get message history with fresh conversation data
           try {
-            await fetchMessageHistory(conversationId, conversation);
+            let result = await fetchMessageHistory(conversationId, freshConversation);
+            console.log('Message history fetched:', result);
           } catch (error) {
             console.error('Error fetching message history:', error);
           }
@@ -221,17 +239,7 @@ async function subscribeToConversation(conversationId) {
     ws.on('error', err => {
       console.error('WebSocket error:', err);
       // Send session ended event on error
-      const sessionEndEvent = {
-        'type': 'session_ended'
-      };
-
-      // Print session end event details
-      console.log('\n=== Session End Event to be published ===');
-      console.log('Topic:', rootTopic + conversationId);
-      console.log('Event:', JSON.stringify(sessionEndEvent, null, 2));
-      console.log('===========================\n');
-
-      eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
+      sendSessionEndEvent(conversationId, rootTopic + conversationId);
       
       // Attempt to reconnect on error
       reconnect();
@@ -245,17 +253,7 @@ async function subscribeToConversation(conversationId) {
       }
       
       // Send session ended event on close
-      const sessionEndEvent = {
-        'type': 'session_ended'
-      };
-
-      // Print session end event details
-      console.log('\n=== Session End Event to be published ===');
-      console.log('Topic:', rootTopic + conversationId);
-      console.log('Event:', JSON.stringify(sessionEndEvent, null, 2));
-      console.log('===========================\n');
-
-      eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
+      sendSessionEndEvent(conversationId, rootTopic + conversationId);
       
       // Attempt to reconnect
       reconnect();
@@ -265,6 +263,52 @@ async function subscribeToConversation(conversationId) {
     console.error('Error in subscribeToConversation:', error);
     throw error;
   }
+}
+
+/**
+ * Check if this is the earliest moment of conversation and send start event if needed
+ * @param {Object} customerParticipant - The customer participant object
+ * @param {string} conversationId - The conversation ID
+ * @param {string} topic - The topic to publish to
+ * @returns {boolean} - True if this is the start of conversation, false otherwise
+ */
+function checkAndHandleConversationStart(customerParticipant, conversationId, topic) {
+  if (customerParticipant && 
+      (customerParticipant.state === 'alerting' || 
+       customerParticipant.state === 'offering' || 
+       customerParticipant.initialState === 'alerting' || 
+       customerParticipant.initialState === 'offering')) {
+    
+    // Send session started event
+    const sessionStartEvent = {
+      'type': 'session_started',
+      'parameters': {
+        'session_id': conversationId,
+        'customer_ani': customerParticipant.address || 'unknown',
+        'customer_name': customerParticipant.name || 'unknown',
+        'dnis': customerParticipant.address || 'unknown',
+        'direction': customerParticipant.direction || 'unknown',
+        'state': customerParticipant.state || 'unknown',
+        'initial_state': customerParticipant.initialState || 'unknown',
+        'provider': customerParticipant.provider || 'unknown',
+        'type': customerParticipant.type || 'unknown'
+      },
+      'conversationid': conversationId,
+      'conversationsationStartTime': conversationsationStartTime,
+      'conversationsationEndTime': ''
+    };
+
+    // Print session start event details
+    console.log('\n=== Session Start Event to be published ===');
+    console.log('Topic:', topic);
+    console.log('Event:', JSON.stringify(sessionStartEvent, null, 2));
+    console.log('===========================\n');
+
+    // Publish the event
+    eventPublisher.publish(topic, JSON.stringify(sessionStartEvent));
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -306,12 +350,18 @@ async function fetchMessageHistory(conversationId, conversation) {
       "body": messageIds
     };
 
-    // Get messages in batch
+    // Get messages in batch and ensure synchronous execution
     const messages = await conversationsApi.postConversationsMessageMessagesBulk(conversationId, opts);
     console.log('Fetched message history:', messages);
 
     // Process each message
     for (const msg of messages.entities) {
+      // Skip if message was already sent
+      if (sentMessageIds.has(msg.id)) {
+        console.log('Message already sent, skipping:', msg.id);
+        continue;
+      }
+
       console.log('\n=== Historical Message ===');
       console.log('Message ID:', msg.id);
       console.log('Conversation ID:', msg.conversationId);
@@ -325,7 +375,7 @@ async function fetchMessageHistory(conversationId, conversation) {
       const event = {
         'type': 'transcription',
         'parameters': {
-          'source': 'genesys_conversation',
+          'source': msg.direction === 'inbound' ? 'external' : 'internal',
           'text': msg.normalizedMessage?.text || '',
           'seq': msg.id,
           'timestamp': msg.timestamp
@@ -341,12 +391,43 @@ async function fetchMessageHistory(conversationId, conversation) {
       console.log('Event:', JSON.stringify(event, null, 2));
       console.log('===========================\n');
 
-      // eventPublisher.publish(topic, JSON.stringify(event));
+      eventPublisher.publish(topic, JSON.stringify(event));
+      
+      // Add message ID to sent set
+      sentMessageIds.add(msg.id);
     }
+
+    return messages;
   } catch (error) {
     console.error('Error fetching message history:', error);
     throw error;
   }
+}
+
+/**
+ * Send session end event
+ * @param {string} conversationId - The conversation ID
+ * @param {string} topic - The topic to publish to
+ */
+function sendSessionEndEvent(conversationId, topic) {
+  const sessionEndEvent = {
+    'type': 'session_ended',
+    'parameters': {
+      'session_id': conversationId
+    },
+    'conversationid': conversationId,
+    'conversationsationStartTime': conversationsationStartTime,
+    'conversationsationEndTime': new Date().toISOString()
+  };
+
+  // Print session end event details
+  console.log('\n=== Session End Event to be published ===');
+  console.log('Topic:', topic);
+  console.log('Event:', JSON.stringify(sessionEndEvent, null, 2));
+  console.log('===========================\n');
+
+  // Publish the event
+  eventPublisher.publish(topic, JSON.stringify(sessionEndEvent));
 }
 
 // Start server
