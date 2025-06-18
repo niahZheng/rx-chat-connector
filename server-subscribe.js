@@ -50,6 +50,10 @@ let conversationsationStartTime = null;
 // Add global Set to track sent message IDs
 const sentMessageIds = new Set();
 
+// Add reconnection configuration
+const MAX_RECONNECT_ATTEMPTS = 3;
+let reconnectAttempts = 0;
+
 /**
  * 订阅会话消息的端点
  * 用于初始化 WebSocket 连接并订阅特定会话的消息
@@ -131,6 +135,12 @@ async function subscribeToConversation(conversationId) {
     async function reconnect() {
       console.log('Attempting to reconnect...');
       try {
+        // Check if we've exceeded max attempts
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+          console.log('Max reconnection attempts reached, giving up...');
+          return;
+        }
+
         // Clear any existing timeout
         if (reconnectTimeout) {
           clearTimeout(reconnectTimeout);
@@ -155,9 +165,14 @@ async function subscribeToConversation(conversationId) {
         // Start heartbeat for new connection
         startHeartbeat();
 
+        // Reset reconnect attempts on successful connection
+        reconnectAttempts = 0;
         console.log('Reconnected successfully');
       } catch (error) {
         console.error('Reconnection failed:', error);
+        // Increment reconnect attempts
+        reconnectAttempts++;
+        console.log(`Reconnection attempt ${reconnectAttempts} of ${MAX_RECONNECT_ATTEMPTS}`);
         // Try again in 5 seconds
         reconnectTimeout = setTimeout(reconnect, 5000);
       }
@@ -354,8 +369,13 @@ async function fetchMessageHistory(conversationId, conversation) {
     const messages = await conversationsApi.postConversationsMessageMessagesBulk(conversationId, opts);
     console.log('Fetched message history:', messages);
 
-    // Process each message
-    for (const msg of messages.entities) {
+    // Filter messages to only include those matching the conversation ID
+    const filteredMessages = messages.entities.filter(msg => msg.conversationId === conversationId);
+    console.log('Filtered messages for conversation:', conversationId);
+    console.log('Filtered message count:', filteredMessages.length);
+
+    // Process each filtered message
+    for (const msg of filteredMessages) {
       // Skip if message was already sent
       if (sentMessageIds.has(msg.id)) {
         console.log('Message already sent, skipping:', msg.id);
@@ -397,7 +417,7 @@ async function fetchMessageHistory(conversationId, conversation) {
       sentMessageIds.add(msg.id);
     }
 
-    return messages;
+    return filteredMessages;
   } catch (error) {
     console.error('Error fetching message history:', error);
     throw error;
