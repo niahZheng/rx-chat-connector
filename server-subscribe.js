@@ -45,7 +45,7 @@ const notificationsApi = new platformClient.NotificationsApi();
 const conversationsApi = new platformClient.ConversationsApi();
 
 // Add global variable for customer connected time
-let conversationsationStartTime = null;
+let conversationStartTime = null;
 
 // Add global Set to track sent message IDs
 const sentMessageIds = new Set();
@@ -224,8 +224,8 @@ async function subscribeToConversation(conversationId) {
           // Find customer participant and save connected time
           const customerParticipant = freshConversation.participants.find(p => p.purpose === 'customer');
           if (customerParticipant && customerParticipant.connectedTime) {
-            conversationsationStartTime = customerParticipant.connectedTime;
-            console.log('Customer connected time saved:', conversationsationStartTime);
+            conversationStartTime = customerParticipant.connectedTime;
+            console.log('Customer connected time saved:', conversationStartTime);
           }
           
           // Check if this is the earliest moment of conversation
@@ -309,8 +309,8 @@ function checkAndHandleConversationStart(customerParticipant, conversationId, to
         'type': customerParticipant.type || 'unknown'
       },
       'conversationid': conversationId,
-      'conversationsationStartTime': conversationsationStartTime,
-      'conversationsationEndTime': ''
+      'conversationStartTime': conversationStartTime,
+      'conversationEndTime': ''
     };
 
     // Print session start event details
@@ -435,9 +435,9 @@ function sendSessionEndEvent(conversationId, topic) {
     'parameters': {
       'session_id': conversationId
     },
-    'conversationid': conversationId,
-    'conversationsationStartTime': conversationsationStartTime,
-    'conversationsationEndTime': new Date().toISOString()
+      'conversationid': conversationId,
+      'conversationStartTime': conversationStartTime,
+      'conversationEndTime': new Date().toISOString()
   };
 
   // Print session end event details
