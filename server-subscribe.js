@@ -310,7 +310,7 @@ function checkAndHandleConversationStart(customerParticipant, conversationId, to
       },
       'conversationid': conversationId,
       'conversationStartTime': conversationStartTime,
-      'conversationEndTime': ''
+      'conversationEndTime': 'unknown'
     };
 
     // Print session start event details
