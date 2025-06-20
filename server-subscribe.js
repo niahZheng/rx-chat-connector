@@ -235,7 +235,7 @@ async function subscribeToConversation(conversationId) {
           if (customerParticipant && 
               (customerParticipant.state === 'disconnected' || 
                customerParticipant.state === 'terminated')) {
-            sendSessionEndEvent(conversationId, rootTopic + conversationId);
+            sendSessionEndEvent(conversationId);
           }
 
           // Get message history with fresh conversation data
@@ -254,7 +254,7 @@ async function subscribeToConversation(conversationId) {
     ws.on('error', err => {
       console.error('WebSocket error:', err);
       // Send session ended event on error
-      sendSessionEndEvent(conversationId, rootTopic + conversationId);
+      sendSessionEndEvent(conversationId);
       
       // Attempt to reconnect on error
       reconnect();
@@ -268,7 +268,7 @@ async function subscribeToConversation(conversationId) {
       }
       
       // Send session ended event on close
-      sendSessionEndEvent(conversationId, rootTopic + conversationId);
+      sendSessionEndEvent(conversationId);
       
       // Attempt to reconnect
       reconnect();
@@ -424,7 +424,7 @@ async function fetchMessageHistory(conversationId, conversation) {
  * @param {string} conversationId - The conversation ID
  * @param {string} topic - The topic to publish to
  */
-function sendSessionEndEvent(conversationId, topic) {
+function sendSessionEndEvent(conversationId) {
   const sessionEndEvent = {
     'type': 'session_ended',
     'parameters': {
@@ -436,7 +436,7 @@ function sendSessionEndEvent(conversationId, topic) {
 
   // Print session end event details
   console.log('\n=== Session End Event to be published ===');
-  console.log('Topic:', topic);
+  console.log('Topic:', rootTopic);
   console.log('Event:', JSON.stringify(sessionEndEvent, null, 2));
   console.log('===========================\n');
 
