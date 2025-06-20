@@ -441,7 +441,7 @@ function sendSessionEndEvent(conversationId, topic) {
   console.log('===========================\n');
 
   // Publish the event
-  eventPublisher.publish(topic, JSON.stringify(sessionEndEvent));
+  eventPublisher.publish(rootTopic + conversationId, JSON.stringify(sessionEndEvent));
 }
 
 // Start server
