@@ -302,15 +302,10 @@ function checkAndHandleConversationStart(customerParticipant, conversationId, to
         'customer_ani': customerParticipant.address || 'unknown',
         'customer_name': customerParticipant.name || 'unknown',
         'dnis': customerParticipant.address || 'unknown',
-        'direction': customerParticipant.direction || 'unknown',
-        'state': customerParticipant.state || 'unknown',
-        'initial_state': customerParticipant.initialState || 'unknown',
-        'provider': customerParticipant.provider || 'unknown',
-        'type': customerParticipant.type || 'unknown'
-      },
-      'conversationid': conversationId,
-      'conversationStartTime': conversationStartTime,
-      'conversationEndTime': 'unknown'
+        'conversationid': conversationId,
+        'conversationStartTime': conversationStartTime,
+        'conversationEndTime': 'unknown'
+      }
     };
 
     // Print session start event details
@@ -433,11 +428,10 @@ function sendSessionEndEvent(conversationId, topic) {
   const sessionEndEvent = {
     'type': 'session_ended',
     'parameters': {
-      'session_id': conversationId
-    },
       'conversationid': conversationId,
       'conversationStartTime': conversationStartTime,
       'conversationEndTime': new Date().toISOString()
+    }
   };
 
   // Print session end event details
