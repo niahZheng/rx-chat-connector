@@ -55,8 +55,8 @@ const MAX_RECONNECT_ATTEMPTS = 3;
 let reconnectAttempts = 0;
 
 /**
- * 订阅会话消息的端点
- * 用于初始化 WebSocket 连接并订阅特定会话的消息
+ * Subscribe to conversation messages endpoint
+ * Used to initialize WebSocket connection and subscribe to specific conversation messages
  */
 app.post('/subscribe-conversation', async (req, res) => {
   try {
@@ -67,13 +67,23 @@ app.post('/subscribe-conversation', async (req, res) => {
       return res.status(400).json({ error: 'conversationId is required' });
     }
 
-    await subscribeToConversation(conversationId);
-    console.log("Successfully subscribed to conversation:", conversationId);
+    const result = await subscribeToConversation(conversationId);
+    console.log("Subscription result:", result);
+
+    // Determine response based on returned result
+    if (result.status === 'audio_conversation') {
+      return res.status(200).json({
+        status: 'skipped',
+        message: result.message,
+        conversationId: result.conversationId,
+        reason: 'audio_conversation_detected'
+      });
+    }
 
     res.status(200).json({
-      status: 'success',
-      message: 'Successfully subscribed to conversation',
-      conversationId
+      status: result.status,
+      message: result.message,
+      conversationId: result.conversationId
     });
   } catch (error) {
     console.error('Error processing subscription request:', error);
@@ -88,6 +98,7 @@ app.post('/subscribe-conversation', async (req, res) => {
 /**
  * Subscribe to conversation notifications and handle messages
  * @param {string} conversationId - The ID of the conversation to subscribe to
+ * @returns {Object} - Result object with status and message
  */
 async function subscribeToConversation(conversationId) {
   try {
@@ -96,6 +107,37 @@ async function subscribeToConversation(conversationId) {
           
     // Get conversation details
     const conversation = await conversationsApi.getConversation(conversationId);
+    
+    // Check calls field in conversation
+    console.log("Conversation structure check:", {
+      id: conversation.id,
+      hasCalls: conversation.participants?.some(p => p.calls && p.calls.length > 0)
+    });
+
+    // Check calls field for all participants
+    let hasCalls = false;
+    if (conversation.participants) {
+      for (const participant of conversation.participants) {
+        if (participant.calls && participant.calls.length > 0) {
+          hasCalls = true;
+          break;
+        }
+      }
+    }
+
+    // If calls is not empty, return audio conversation response
+    if (hasCalls) {
+      console.log(`Conversation ${conversationId} has calls, this is an audio conversation`);
+      return {
+        status: 'audio_conversation',
+        message: 'This conversation ID is an audio conversation interaction ID, stopping execution',
+        conversationId: conversationId
+      };
+    }
+
+    // If calls is empty, continue execution
+    console.log(`Conversation ${conversationId} has no calls, continuing execution`);
+    
     const agentParticipant = conversation.participants.find(p => p.purpose === 'agent');
 
     if (!agentParticipant?.userId) {
@@ -273,6 +315,13 @@ async function subscribeToConversation(conversationId) {
       // Attempt to reconnect
       reconnect();
     });
+
+    // Return success status
+    return {
+      status: 'success',
+      message: 'Successfully subscribed to conversation',
+      conversationId: conversationId
+    };
 
   } catch (error) {
     console.error('Error in subscribeToConversation:', error);
