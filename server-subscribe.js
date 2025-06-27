@@ -80,6 +80,15 @@ app.post('/subscribe-conversation', async (req, res) => {
       });
     }
 
+    if (result.status === 'conversation_fetch_failed') {
+      return res.status(200).json({
+        status: 'error',
+        message: result.message,
+        conversationId: result.conversationId,
+        reason: 'conversation_fetch_failed'
+      });
+    }
+
     res.status(200).json({
       status: result.status,
       message: result.message,
@@ -106,7 +115,17 @@ async function subscribeToConversation(conversationId) {
     await client.loginClientCredentialsGrant(config.clientId, config.clientSecret);
           
     // Get conversation details
-    const conversation = await conversationsApi.getConversation(conversationId);
+    let conversation;
+    try {
+      conversation = await conversationsApi.getConversation(conversationId);
+    } catch (error) {
+      console.error(`Failed to get conversation ${conversationId}:`, error.message);
+      return {
+        status: 'conversation_fetch_failed',
+        message: 'Failed to get conversation details',
+        conversationId: conversationId
+      };
+    }
     
     // Check calls field in conversation
     console.log("Conversation structure check:", {
