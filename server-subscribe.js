@@ -82,7 +82,7 @@ app.post('/subscribe-conversation', async (req, res) => {
 
     if (result.status === 'conversation_fetch_failed') {
       return res.status(200).json({
-        status: 'error',
+        status: 'skipped',
         message: result.message,
         conversationId: result.conversationId,
         reason: 'conversation_fetch_failed'
