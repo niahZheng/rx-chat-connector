@@ -17,4 +17,4 @@ COPY . .
 EXPOSE 443
 
 # Start the service
-CMD ["node", "server-subscribe.js"] 
+CMD ["node", "server-subscribe.js"]
