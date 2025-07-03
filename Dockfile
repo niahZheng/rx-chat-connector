@@ -1,0 +1,20 @@
+# Use the official Node.js LTS version as the base image
+FROM node:20-alpine
+
+# Set the working directory
+WORKDIR /app
+
+# Copy package.json and package-lock.json
+COPY package*.json ./
+
+# Install production dependencies
+RUN npm install --production
+
+# Copy all project files
+COPY . .
+
+# Expose the service port (e.g., server-subscribe.js listens on port 3000 by default)
+EXPOSE 443
+
+# Start the service
+CMD ["node", "server-subscribe.js"] 

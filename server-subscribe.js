@@ -1,9 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const { MongoClient } = require("mongodb");
 const platformClient = require('purecloud-platform-client-v2');
 const WebSocket = require('ws');
-const EventPublisher = require('./EventPublisher');
 const CeleryEventPublisher = require('./CeleryEventPublisher');
 const cors = require('cors');
 require('dotenv').config();
@@ -12,8 +10,7 @@ require('dotenv').config();
 const config = {
   clientId: process.env.GENESYS_CLIENT_ID,
   clientSecret: process.env.GENESYS_CLIENT_SECRET,
-  region: process.env.GENESYS_REGION,
-  mongoUri: process.env.MONGODB_URI
+  region: process.env.GENESYS_REGION
 };
 
 // Initialize event publisher
@@ -513,7 +510,7 @@ function sendSessionEndEvent(conversationId) {
 }
 
 // Start server
-const port = process.env.PORT || 3000;
+const port = process.env.PORT ||  process.env.DEFAULT_SERVER_LISTEN_PORT;
 const server = app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
