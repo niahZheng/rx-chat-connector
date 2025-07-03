@@ -510,7 +510,7 @@ function sendSessionEndEvent(conversationId) {
 }
 
 // Start server
-const port = process.env.PORT ||  process.env.DEFAULT_SERVER_LISTEN_PORT;
+const port = process.env.PORT || process.env.DEFAULT_SERVER_LISTEN_PORT;
 const server = app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
