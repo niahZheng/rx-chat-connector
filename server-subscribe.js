@@ -4,7 +4,7 @@ const platformClient = require('purecloud-platform-client-v2');
 const WebSocket = require('ws');
 const CeleryEventPublisher = require('./CeleryEventPublisher');
 const cors = require('cors');
-require('dotenv').config();
+// require('dotenv').config();
 
 // Configuration from environment variables
 const config = {
